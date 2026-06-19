@@ -22,6 +22,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service as ChromeService
 import constants
+from browser_utils import create_chrome_driver
 
 # Add folder Path of your resume
 originalResumePath = constants.ORIGINAL_RESUME_PATH
@@ -36,8 +37,8 @@ mob = constants.MOBILE
 # False if you dont want to add Random HIDDEN chars to your resume
 updatePDF = False
 
-# If Headless = True, script runs Chrome in headless mode without visible GUI
-headless = False
+# If headless = True, script runs Chrome in headless mode without visible GUI
+headless = True
 
 # ----- No other changes required -----
 
@@ -156,23 +157,7 @@ def randomText():
 
 def LoadNaukri(headless):
     """Open Chrome to load Naukri.com"""
-
-    options = webdriver.ChromeOptions()
-    options.add_argument("--disable-notifications")
-    options.add_argument("--start-maximized")  # ("--kiosk") for MAC
-    options.add_argument("--disable-popups")
-    options.add_argument("--disable-gpu")
-    if headless:
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("headless")
-
-    # updated to use latest selenium Chrome service
-    driver = None
-    try:
-        driver = webdriver.Chrome(options=options, service=ChromeService())
-    except Exception as e:
-        print(f"Error launching Chrome: {e}")
-        driver = webdriver.Chrome(options)
+    driver = create_chrome_driver(headless)
     log_msg("Google Chrome Launched!")
 
     driver.implicitly_wait(5)
@@ -194,6 +179,12 @@ def naukriLogin(headless=False):
         driver = LoadNaukri(headless)
 
         log_msg(driver.title)
+        if "access denied" in driver.title.lower():
+            log_msg(
+                "Naukri blocked this browser session (Access Denied). "
+                "Install undetected-chromedriver: pip install undetected-chromedriver"
+            )
+            return (status, driver)
         if "naukri.com" in driver.title.lower():
             log_msg("Website Loaded Successfully.")
 
