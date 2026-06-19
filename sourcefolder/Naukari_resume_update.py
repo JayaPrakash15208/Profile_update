@@ -23,6 +23,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service as ChromeService
 import jayConstants as constants
 from browser_utils import create_chrome_driver
+from login_helpers import (
+    dismiss_post_login_popups,
+    handle_otp_if_required,
+    wait_for_login,
+)
 
 # Add folder Path of your resume
 originalResumePath = constants.ORIGINAL_RESUME_PATH
@@ -175,8 +180,6 @@ def naukriLogin(headless=False):
     username_locator = "usernameField"
     password_locator = "passwordField"
     login_btn_locator = "//*[@type='submit' and normalize-space()='Login']"
-    skip_locator = "//*[text() = 'SKIP AND CONTINUE']"
-    close_locator = "//*[contains(@class, 'cross-icon') or @alt='cross-icon']"
 
     try:
         driver = LoadNaukri(headless)
@@ -208,29 +211,19 @@ def naukriLogin(headless=False):
             passFieldElement.clear()
             passFieldElement.send_keys(password)
             time.sleep(1)
-            loginButton.send_keys(Keys.ENTER)
+            loginButton.click()
             time.sleep(3)
 
-            # Added click to Skip button
             print("Checking Skip button")
-            if WaitTillElementPresent(driver, close_locator, "XPATH", 10):
-                GetElement(driver, close_locator, "XPATH").click()
-            if WaitTillElementPresent(driver, skip_locator, "XPATH", 5):
-                GetElement(driver, skip_locator, "XPATH").click()
+            dismiss_post_login_popups(driver, WaitTillElementPresent, GetElement)
+            handle_otp_if_required(driver, log_msg)
+            dismiss_post_login_popups(driver, WaitTillElementPresent, GetElement)
 
-            # CheckPoint to verify login
-            if WaitTillElementPresent(driver, "ff-inventory", locator="ID", timeout=40):
-                CheckPoint = GetElement(driver, "ff-inventory", locator="ID")
-                if CheckPoint:
-                    log_msg("Naukri Login Successful")
-                    status = True
-                    return (status, driver)
-                else:
-                    log_msg("Unknown Login Error")
-                    return (status, driver)
+            if wait_for_login(driver, log_msg, timeout=60):
+                log_msg("Naukri Login Successful")
+                status = True
             else:
                 log_msg("Unknown Login Error")
-                return (status, driver)
 
     except Exception as e:
         catch(e)
