@@ -1,7 +1,9 @@
 """Shared Chrome setup to reduce bot-detection blocks on Naukri."""
 
+import os
 import re
 import subprocess
+import sys
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -12,6 +14,8 @@ try:
     HAS_UC = True
 except ImportError:
     HAS_UC = False
+
+IS_LINUX = sys.platform.startswith("linux")
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -26,27 +30,89 @@ _STEALTH_ARGS = [
     f"--user-agent={USER_AGENT}",
 ]
 
+_LINUX_ARGS = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+]
+
+_CHROME_BINARIES = [
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+]
+
+_CHROME_VERSION_COMMANDS = [
+    "google-chrome-stable",
+    "google-chrome",
+    "chromium-browser",
+    "chromium",
+]
+
+
+def _get_chrome_binary():
+    for path in _CHROME_BINARIES:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
 
 def _get_chrome_major_version():
-    try:
-        result = subprocess.run(
-            [
-                "reg",
-                "query",
-                r"HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon",
-                "/v",
-                "version",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        match = re.search(r"(\d+)\.", result.stdout)
-        if match:
-            return int(match.group(1))
-    except Exception:
-        pass
+    if sys.platform == "win32":
+        try:
+            result = subprocess.run(
+                [
+                    "reg",
+                    "query",
+                    r"HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon",
+                    "/v",
+                    "version",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            match = re.search(r"(\d+)\.", result.stdout)
+            if match:
+                return int(match.group(1))
+        except Exception:
+            pass
+        return None
+
+    chrome_binary = _get_chrome_binary()
+    commands = [chrome_binary] if chrome_binary else []
+    commands.extend(_CHROME_VERSION_COMMANDS)
+
+    for cmd in commands:
+        if not cmd:
+            continue
+        try:
+            result = subprocess.run(
+                [cmd, "--version"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            match = re.search(r"(\d+)\.", result.stdout)
+            if match:
+                return int(match.group(1))
+        except Exception:
+            pass
     return None
+
+
+def _apply_platform_args(options):
+    for arg in _STEALTH_ARGS:
+        options.add_argument(arg)
+
+    if IS_LINUX:
+        for arg in _LINUX_ARGS:
+            options.add_argument(arg)
+
+    chrome_binary = _get_chrome_binary()
+    if chrome_binary:
+        options.binary_location = chrome_binary
 
 
 def _apply_stealth(driver):
@@ -62,15 +128,13 @@ def _apply_stealth(driver):
 
 def _build_selenium_options(headless):
     options = webdriver.ChromeOptions()
-    for arg in _STEALTH_ARGS:
-        options.add_argument(arg)
+    _apply_platform_args(options)
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
 
     if headless:
         options.add_argument("--headless=new")
         options.add_argument("--disable-gpu")
-        options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--window-size=1920,1080")
     else:
         options.add_argument("--start-maximized")
@@ -81,12 +145,13 @@ def _build_selenium_options(headless):
 
 def _build_uc_options(headless):
     options = uc.ChromeOptions()
-    for arg in _STEALTH_ARGS:
-        options.add_argument(arg)
+    _apply_platform_args(options)
+
     if headless:
         options.add_argument("--window-size=1920,1080")
     else:
         options.add_argument("--start-maximized")
+
     return options
 
 
@@ -107,8 +172,8 @@ def create_chrome_driver(headless):
     if headless and HAS_UC:
         try:
             return _create_uc_driver(headless)
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"undetected-chromedriver failed, falling back to selenium: {exc}")
 
     options = _build_selenium_options(headless)
     driver = webdriver.Chrome(options=options, service=ChromeService())

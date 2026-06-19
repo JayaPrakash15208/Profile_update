@@ -136,6 +136,9 @@ def WaitTillElementPresent(driver, elementTag, locator="ID", timeout=30):
 
 
 def tearDown(driver):
+    if driver is None:
+        return
+
     try:
         driver.close()
         log_msg("Driver Closed Successfully")
